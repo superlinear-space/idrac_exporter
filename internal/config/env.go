@@ -67,6 +67,7 @@ func (c *RootConfig) FromEnvironment() {
 	getEnvBool("CONFIG_METRICS_POWER", &c.Collect.Power)
 	getEnvBool("CONFIG_METRICS_STORAGE", &c.Collect.Storage)
 	getEnvBool("CONFIG_METRICS_MEMORY", &c.Collect.Memory)
+	getEnvBool("CONFIG_METRICS_GPU", &c.Collect.GPU)
 	getEnvBool("CONFIG_METRICS_NETWORK", &c.Collect.Network)
 	getEnvBool("CONFIG_METRICS_PROCESSORS", &c.Collect.Processors)
 	getEnvBool("CONFIG_METRICS_EXTRA", &c.Collect.Extra)

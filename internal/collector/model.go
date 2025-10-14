@@ -163,6 +163,7 @@ type ChassisResponse struct {
 			Room     string `json:"Room"`
 		} `json:"PostalAddress"`
 	} `json:"Location"`
+	Drives           Odata  `json:"Drives"`
 	Memory           Odata  `json:"Memory"`
 	NetworkAdapters  Odata  `json:"NetworkAdapters"`
 	PCIeSlots        Odata  `json:"PCIeSlots"`

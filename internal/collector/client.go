@@ -61,6 +61,7 @@ type Client struct {
 		Processors       string
 		DellOEM          string
 		GPU              string
+		H3CDrives        string
 	}
 }
 
@@ -193,6 +194,10 @@ func (client *Client) findAllEndpoints() bool {
 			client.path.Event = ""
 			client.version = 4
 		}
+	}
+
+	if client.vendor == H3C {
+		client.path.H3CDrives = chassis.Drives.OdataId
 	}
 
 	return true
@@ -721,6 +726,36 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 				mc.NewStorageVolumeCapacity(ch, storage.Id, &vol)
 				mc.NewStorageVolumeMediaSpan(ch, storage.Id, &vol)
 			}
+		}
+	}
+
+	if client.vendor == H3C {
+		if client.path.H3CDrives == "" {
+			return true
+		}
+
+		drvgrp := GroupResponse{}
+		ok = client.redfish.Get(client.path.H3CDrives, &drvgrp)
+		if !ok {
+			return false
+		}
+
+		for _, c := range drvgrp.Members.GetLinks() {
+			drive := StorageDrive{}
+			ok = client.redfish.Get(c, &drive)
+			if !ok {
+				return false
+			}
+
+			if drive.Status.State == StateAbsent {
+				continue
+			}
+
+			mc.NewStorageDriveInfo(ch, drive.Id, &drive)
+			mc.NewStorageDriveHealth(ch, drive.Id, &drive)
+			mc.NewStorageDriveCapacity(ch, drive.Id, &drive)
+			mc.NewStorageDriveLifeLeft(ch, drive.Id, &drive)
+			mc.NewStorageDriveIndicatorActive(ch, drive.Id, &drive)
 		}
 	}
 

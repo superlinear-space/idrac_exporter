@@ -51,6 +51,7 @@ hosts:
   default:
     username: user
     password: pass
+    vendor: dell
   192.168.1.1:
     username: user
     password: pass
@@ -72,6 +73,7 @@ metrics:
   events: false      # CONFIG_METRICS_EVENTS=false
   storage: false     # CONFIG_METRICS_STORAGE=false
   memory: false      # CONFIG_METRICS_MEMORY=false
+  gpu: false         # CONFIG_METRICS_GPU=false
   network: false     # CONFIG_METRICS_NETWORK=false
   extra: false       # CONFIG_METRICS_EXTRA=false
 
