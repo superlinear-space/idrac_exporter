@@ -29,6 +29,7 @@ func GetHostConfig(target string) *HostConfig {
 			Scheme:   def.Scheme,
 			Username: def.Username,
 			Password: def.Password,
+			Vendor:   def.Vendor,
 		}
 		Config.Hosts[target] = host
 	}
@@ -141,6 +142,7 @@ func (c *RootConfig) Validate() error {
 		c.Collect.Memory = true
 		c.Collect.Network = true
 		c.Collect.Processors = true
+		c.Collect.GPU = true
 		c.Collect.Extra = true
 	}
 

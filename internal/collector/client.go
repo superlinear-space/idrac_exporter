@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrlhansen/idrac_exporter/internal/config"
+	"github.com/mrlhansen/idrac_exporter/internal/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -20,6 +21,28 @@ const (
 	FUJITSU
 	SUPERMICRO
 )
+
+func detectVendor(manufacturer string, fallback int) int {
+	m := strings.ToLower(manufacturer)
+	if strings.Contains(m, "dell") {
+		return DELL
+	} else if strings.Contains(m, "hpe") {
+		return HPE
+	} else if strings.Contains(m, "lenovo") {
+		return LENOVO
+	} else if strings.Contains(m, "inspur") {
+		return INSPUR
+	} else if strings.Contains(m, "h3c") {
+		return H3C
+	} else if strings.Contains(m, "inventec") {
+		return INVENTEC
+	} else if strings.Contains(m, "fujitsu") {
+		return FUJITSU
+	} else if strings.Contains(m, "supermicro") {
+		return SUPERMICRO
+	}
+	return fallback
+}
 
 type Client struct {
 	redfish *Redfish
@@ -37,6 +60,7 @@ type Client struct {
 		Event            string
 		Processors       string
 		DellOEM          string
+		GPU              string
 	}
 }
 
@@ -49,6 +73,7 @@ func NewClient(h *config.HostConfig) *Client {
 			h.Password,
 		),
 	}
+	client.vendor = detectVendor(h.Vendor, UNKNOWN)
 
 	client.redfish.CreateSession()
 	ok := client.findAllEndpoints()
@@ -106,26 +131,11 @@ func (client *Client) findAllEndpoints() bool {
 	client.path.Power = chassis.Power.OdataId
 	client.path.PowerSubsystem = chassis.PowerSubsystem.OdataId
 	client.path.Processors = system.Processors.OdataId
-
-	// Vendor
-	m := strings.ToLower(system.Manufacturer)
-	if strings.Contains(m, "dell") {
-		client.vendor = DELL
-	} else if strings.Contains(m, "hpe") {
-		client.vendor = HPE
-	} else if strings.Contains(m, "lenovo") {
-		client.vendor = LENOVO
-	} else if strings.Contains(m, "inspur") {
-		client.vendor = INSPUR
-	} else if strings.Contains(m, "h3c") {
-		client.vendor = H3C
-	} else if strings.Contains(m, "inventec") {
-		client.vendor = INVENTEC
-	} else if strings.Contains(m, "fujitsu") {
-		client.vendor = FUJITSU
-	} else if strings.Contains(m, "supermicro") {
-		client.vendor = SUPERMICRO
+	if system.Oem.Public != nil {
+		client.path.GPU = system.Oem.Public.GPU.OdataId
 	}
+
+	client.vendor = detectVendor(system.Manufacturer, client.vendor)
 
 	// Path for event log
 	if config.Config.Collect.Events {
@@ -156,6 +166,8 @@ func (client *Client) findAllEndpoints() bool {
 			client.path.Event = "/redfish/v1/Managers/iRMC/LogServices/SystemEventLog/Entries"
 		case SUPERMICRO:
 			client.path.Event = "/redfish/v1/Systems/1/LogServices/Log1/Entries"
+		case H3C:
+			client.path.Event = "/redfish/v1/Systems/1/LogServices/Oem/Public/UnresolvedSEL/Entries"
 		}
 	}
 
@@ -522,6 +534,11 @@ func (client *Client) RefreshPowerOld(mc *Collector, ch chan<- prometheus.Metric
 			continue
 		}
 
+		if (client.vendor == H3C) && (psu.Oem.Public != nil) {
+			psu.PowerInputWatts = psu.Oem.Public.PowerCurrentWatts
+			psu.PowerOutputWatts = psu.Oem.Public.PowerOutputWatts
+		}
+
 		id := strconv.Itoa(i)
 		mc.NewPowerSupplyHealth(ch, psu.Status.Health, id)
 		mc.NewPowerSupplyInputWatts(ch, psu.PowerInputWatts, id)
@@ -741,6 +758,29 @@ func (client *Client) RefreshMemory(mc *Collector, ch chan<- prometheus.Metric) 
 		mc.NewMemoryModuleHealth(ch, &m)
 		mc.NewMemoryModuleCapacity(ch, &m)
 		mc.NewMemoryModuleSpeed(ch, &m)
+	}
+
+	return true
+}
+
+func (client *Client) RefreshGPU(mc *Collector, ch chan<- prometheus.Metric) bool {
+	if client.path.GPU == "" {
+		log.Debug("No GPU path")
+		return true
+	}
+
+	resp := GPUResponse{}
+	ok := client.redfish.Get(client.path.GPU, &resp)
+	if !ok {
+		return false
+	}
+
+	// For each GPU
+	for _, g := range resp.GPU {
+		mc.NewGpuInfo(ch, &g)
+		mc.NewGpuHealth(ch, &g)
+		mc.NewGpuPowerConsumedWatts(ch, &g)
+		mc.NewGpuTemp(ch, &g)
 	}
 
 	return true

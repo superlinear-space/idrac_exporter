@@ -439,6 +439,32 @@ type Memory struct {
 	SizeMB              int    `json:"SizeMB"`
 }
 
+type GPUResponse struct {
+	Id          string `json:"Id"`
+	Name        string `json:"Name"`
+	Description string `json:"Description"`
+	GPUMaxNum   int    `json:"GPUMaxNum"`
+	Members     int    `json:"Members@odata.count"`
+	GPU         []GPU  `json:"GPU"`
+	HealthState struct {
+		OverallHealth string `json:"OverallHealth"`
+	}
+}
+
+type GPU struct {
+	FirmwareVersion    string  `json:"FirmwareVersion"`
+	Id                 string  `json:"ID"`
+	Manufacture        string  `json:"Manufacture"`
+	Model              string  `json:"Model"`
+	Name               string  `json:"Name"`
+	PartNumber         string  `json:"PartNumber"`
+	PowerConsumedWatts float64 `json:"PowerConsumedWatts"`
+	SerialNumber       string  `json:"SerialNumber"`
+	SlotNum            int     `json:"SlotNum"`
+	Status             Status  `json:"Status"`
+	TemperatureCelsius float64 `json:"TemperatureCelsius"`
+}
+
 type NetworkAdapter struct {
 	Id           string `json:"Id"`
 	Name         string `json:"Name"`
@@ -543,6 +569,9 @@ type SystemResponse struct {
 		Hpe struct {
 			IndicatorLED string `json:"IndicatorLED"`
 		} `json:"Hpe"`
+		Public *struct {
+			GPU Odata `json:"GPU"`
+		} `json:"Public"`
 	} `json:"Oem"`
 }
 
@@ -648,6 +677,24 @@ type PowerSupplyUnit struct {
 	SparePartNumber      string       `json:"SparePartNumber"`
 	Status               Status       `json:"Status"`
 	Redundancy           []Redundancy `json:"Redundancy"`
+	Oem                  struct {
+		Public *struct {
+			ActiveStandby          string  `json:"ActiveStandby"`
+			ActiveStandbySupported bool    `json:"ActiveStandbySupported"`
+			InputAmperage          float64 `json:"InputAmperage"`
+			LineInputCurrent       float64 `json:"LineInputCurrent"`
+			LineInputVoltageType   string  `json:"LineInputVoltageType"`
+			ManufactureDate        string  `json:"ManufactureDate"`
+			PowerCurrentWatts      float64 `json:"PowerCurrentWatts"`
+			PowerGroupId           string  `json:"PowerGroupId"`
+			PowerID                string  `json:"PowerID"`
+			PowerMaxWatts          float64 `json:"PowerMaxWatts"`
+			PowerOutputVoltage     float64 `json:"PowerOutputVoltage"`
+			PowerOutputWatts       float64 `json:"PowerOutputWatts"`
+			ReadingAmperes         float64 `json:"ReadingAmperes"`
+			SlotNumber             int     `json:"SlotNumber"`
+		} `json:"Public"`
+	} `json:"Oem"`
 }
 
 func (psu *PowerSupplyUnit) GetOutputPower() float64 {

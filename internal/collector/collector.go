@@ -102,6 +102,12 @@ type Collector struct {
 	CpuTotalCores   *prometheus.Desc
 	CpuTotalThreads *prometheus.Desc
 
+	// GPU
+	GpuInfo               *prometheus.Desc
+	GpuHealth             *prometheus.Desc
+	GpuPowerConsumedWatts *prometheus.Desc
+	GpuTemp               *prometheus.Desc
+
 	// Dell OEM
 	DellBatteryRollupHealth       *prometheus.Desc
 	DellEstimatedSystemAirflowCFM *prometheus.Desc
@@ -401,6 +407,26 @@ func NewCollector() *Collector {
 			"Total number of CPU threads",
 			[]string{"id"}, nil,
 		),
+		GpuInfo: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "gpu", "info"),
+			"Information about the GPU",
+			[]string{"id", "manufacture", "model", "serial", "firmware"}, nil,
+		),
+		GpuHealth: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "gpu", "health"),
+			"Health status of the GPU",
+			[]string{"id", "status"}, nil,
+		),
+		GpuPowerConsumedWatts: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "gpu", "power_consumed_watts"),
+			"GPU power consumption in watts",
+			[]string{"id"}, nil,
+		),
+		GpuTemp: prometheus.NewDesc(
+			prometheus.BuildFQName(prefix, "gpu", "temp"),
+			"GPU temperature measurements",
+			[]string{"id"}, nil,
+		),
 		DellBatteryRollupHealth: prometheus.NewDesc(
 			prometheus.BuildFQName(prefix, "dell", "battery_rollup_health"),
 			"Health rollup status for the batteries",
@@ -484,6 +510,10 @@ func (collector *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.CpuCurrentSpeed
 	ch <- collector.CpuTotalCores
 	ch <- collector.CpuTotalThreads
+	ch <- collector.GpuInfo
+	ch <- collector.GpuHealth
+	ch <- collector.GpuPowerConsumedWatts
+	ch <- collector.GpuTemp
 	ch <- collector.DellBatteryRollupHealth
 	ch <- collector.DellEstimatedSystemAirflowCFM
 	ch <- collector.DellControllerBatteryHealth
@@ -576,6 +606,17 @@ func (collector *Collector) Collect(ch chan<- prometheus.Metric) {
 		wg.Add(1)
 		go func() {
 			ok := collector.client.RefreshProcessors(collector, ch)
+			if !ok {
+				collector.errors.Add(1)
+			}
+			wg.Done()
+		}()
+	}
+
+	if collect.GPU {
+		wg.Add(1)
+		go func() {
+			ok := collector.client.RefreshGPU(collector, ch)
 			if !ok {
 				collector.errors.Add(1)
 			}

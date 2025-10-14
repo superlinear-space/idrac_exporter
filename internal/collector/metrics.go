@@ -751,6 +751,51 @@ func (mc *Collector) NewCpuTotalThreads(ch chan<- prometheus.Metric, m *Processo
 	)
 }
 
+func (mc *Collector) NewGpuInfo(ch chan<- prometheus.Metric, m *GPU) {
+	ch <- prometheus.MustNewConstMetric(
+		mc.GpuInfo,
+		prometheus.UntypedValue,
+		1.0,
+		m.Id,
+		m.Manufacture,
+		m.Model,
+		m.SerialNumber,
+		m.FirmwareVersion,
+	)
+}
+
+func (mc *Collector) NewGpuHealth(ch chan<- prometheus.Metric, m *GPU) {
+	value := health2value(m.Status.Health)
+	if value < 0 {
+		return
+	}
+	ch <- prometheus.MustNewConstMetric(
+		mc.GpuHealth,
+		prometheus.GaugeValue,
+		float64(value),
+		m.Id,
+		m.Status.Health,
+	)
+}
+
+func (mc *Collector) NewGpuPowerConsumedWatts(ch chan<- prometheus.Metric, m *GPU) {
+	ch <- prometheus.MustNewConstMetric(
+		mc.GpuPowerConsumedWatts,
+		prometheus.GaugeValue,
+		m.PowerConsumedWatts,
+		m.Id,
+	)
+}
+
+func (mc *Collector) NewGpuTemp(ch chan<- prometheus.Metric, m *GPU) {
+	ch <- prometheus.MustNewConstMetric(
+		mc.GpuTemp,
+		prometheus.GaugeValue,
+		m.TemperatureCelsius,
+		m.Id,
+	)
+}
+
 func (mc *Collector) NewDellBatteryRollupHealth(ch chan<- prometheus.Metric, m *DellSystem) {
 	value := health2value(m.BatteryRollupStatus)
 	if value < 0 {

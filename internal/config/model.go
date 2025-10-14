@@ -6,6 +6,7 @@ type HostConfig struct {
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
 	Scheme   string `yaml:"scheme"`
+	Vendor   string `yaml:"vendor"`
 	Hostname string
 }
 
@@ -17,6 +18,7 @@ type CollectConfig struct {
 	Power      bool `yaml:"power"`
 	Storage    bool `yaml:"storage"`
 	Memory     bool `yaml:"memory"`
+	GPU        bool `yaml:"gpu"`
 	Network    bool `yaml:"network"`
 	Processors bool `yaml:"processors"`
 	Extra      bool `yaml:"extra"`
