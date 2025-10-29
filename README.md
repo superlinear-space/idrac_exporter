@@ -25,6 +25,24 @@ cd idrac_exporter
 make
 ```
 
+### Cross-compilation
+The Makefile includes targets for cross-compilation to different platforms:
+
+```sh
+# Build for all supported platforms
+make build-all
+
+# Build for specific platforms
+make build-linux    # Linux (amd64, arm64, armv7)
+make build-windows  # Windows (amd64)
+make build-darwin   # macOS (amd64, arm64)
+
+# Build for a specific platform
+make build-platform GOOS=linux GOARCH=amd64
+```
+
+The binaries will be placed in the `bin/` directory with platform-specific names.
+
 ### Docker
 There is a `Dockerfile` in the repository for building a container image. To build it locally use:
 

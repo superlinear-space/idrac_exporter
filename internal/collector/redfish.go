@@ -14,6 +14,7 @@ import (
 
 	"github.com/mrlhansen/idrac_exporter/internal/config"
 	"github.com/mrlhansen/idrac_exporter/internal/log"
+	"golang.org/x/net/http2"
 )
 
 type Redfish struct {
@@ -32,17 +33,25 @@ type Redfish struct {
 const redfishRootPath = "/redfish/v1"
 
 func NewRedfish(scheme, hostname, username, password string) *Redfish {
+	transport := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+
+	// Enable HTTP/2 support
+	err := http2.ConfigureTransport(transport)
+	if err != nil {
+		log.Error("Failed to configure HTTP/2 transport: %v", err)
+	}
+
 	return &Redfish{
 		baseurl:  fmt.Sprintf("%s://%s", scheme, hostname),
 		hostname: hostname,
 		username: username,
 		password: password,
 		http: &http.Client{
-			Transport: &http.Transport{
-				Proxy:           http.ProxyFromEnvironment,
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			},
-			Timeout: time.Duration(config.Config.Timeout) * time.Second,
+			Transport: transport,
+			Timeout:   time.Duration(config.Config.Timeout) * time.Second,
 		},
 	}
 }
@@ -221,6 +230,11 @@ func (r *Redfish) Get(path string, res any) bool {
 	if err != nil {
 		log.Error("Failed to query %q: %v", url, err)
 		return false
+	}
+
+	// Log HTTP version for debugging
+	if config.Debug {
+		log.Debug("HTTP version used for %q: %s", url, resp.Proto)
 	}
 
 	if resp.StatusCode != http.StatusOK {

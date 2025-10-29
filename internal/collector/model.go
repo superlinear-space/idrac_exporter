@@ -453,17 +453,17 @@ type GPUResponse struct {
 }
 
 type GPU struct {
-	FirmwareVersion    string  `json:"FirmwareVersion"`
-	Id                 string  `json:"ID"`
-	Manufacture        string  `json:"Manufacture"`
-	Model              string  `json:"Model"`
-	Name               string  `json:"Name"`
-	PartNumber         string  `json:"PartNumber"`
-	PowerConsumedWatts float64 `json:"PowerConsumedWatts"`
-	SerialNumber       string  `json:"SerialNumber"`
-	SlotNum            int     `json:"SlotNum"`
-	Status             Status  `json:"Status"`
-	TemperatureCelsius float64 `json:"TemperatureCelsius"`
+	FirmwareVersion    string `json:"FirmwareVersion"`
+	Id                 string `json:"ID"`
+	Manufacture        string `json:"Manufacture"`
+	Model              string `json:"Model"`
+	Name               string `json:"Name"`
+	PartNumber         string `json:"PartNumber"`
+	PowerConsumedWatts int32  `json:"PowerConsumedWatts"`
+	SerialNumber       string `json:"SerialNumber"`
+	SlotNum            int    `json:"SlotNum"`
+	Status             Status `json:"Status"`
+	TemperatureCelsius int32  `json:"TemperatureCelsius"`
 }
 
 type NetworkAdapter struct {

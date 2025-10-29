@@ -782,7 +782,7 @@ func (mc *Collector) NewGpuPowerConsumedWatts(ch chan<- prometheus.Metric, m *GP
 	ch <- prometheus.MustNewConstMetric(
 		mc.GpuPowerConsumedWatts,
 		prometheus.GaugeValue,
-		m.PowerConsumedWatts,
+		float64(m.PowerConsumedWatts),
 		m.Id,
 	)
 }
@@ -791,7 +791,7 @@ func (mc *Collector) NewGpuTemp(ch chan<- prometheus.Metric, m *GPU) {
 	ch <- prometheus.MustNewConstMetric(
 		mc.GpuTemp,
 		prometheus.GaugeValue,
-		m.TemperatureCelsius,
+		float64(m.TemperatureCelsius),
 		m.Id,
 	)
 }
