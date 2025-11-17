@@ -11,17 +11,18 @@ type HostConfig struct {
 }
 
 type CollectConfig struct {
-	All        bool `yaml:"all"`
-	System     bool `yaml:"system"`
-	Sensors    bool `yaml:"sensors"`
-	Events     bool `yaml:"events"`
-	Power      bool `yaml:"power"`
-	Storage    bool `yaml:"storage"`
-	Memory     bool `yaml:"memory"`
-	GPU        bool `yaml:"gpu"`
-	Network    bool `yaml:"network"`
-	Processors bool `yaml:"processors"`
-	Extra      bool `yaml:"extra"`
+	All               bool `yaml:"all"`
+	System            bool `yaml:"system"`
+	Sensors           bool `yaml:"sensors"`
+	Events            bool `yaml:"events"`
+	Power             bool `yaml:"power"`
+	Storage           bool `yaml:"storage"`
+	Memory            bool `yaml:"memory"`
+	GPU               bool `yaml:"gpu"`
+	Network           bool `yaml:"network"`
+	Processors        bool `yaml:"processors"`
+	Extra             bool `yaml:"extra"`
+	ExpandCollections bool `yaml:"expand_collections"`
 }
 
 type EventConfig struct {

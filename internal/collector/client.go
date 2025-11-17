@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -203,6 +204,34 @@ func (client *Client) findAllEndpoints() bool {
 	return true
 }
 
+// getExpandedCollection attempts to fetch an expanded collection.
+// If ExpandCollections is enabled and successful, it unmarshals into expandedCollection.
+// Otherwise, it falls back to the legacy GroupResponse method and unmarshals into legacyGroup.
+func (client *Client) getExpandedCollection(uri string, expandedCollection interface{}, legacyGroup *GroupResponse, selector string, levels int) bool {
+	params := "?"
+
+	if selector != "" {
+		params += "$select=" + selector + "&"
+	}
+
+	params += "$expand=*"
+
+	if levels > 1 {
+		params += fmt.Sprintf("($levels=%d)", levels)
+	}
+
+	if config.Config.Collect.ExpandCollections {
+		ok := client.redfish.Get(uri+params, expandedCollection)
+		if ok {
+			return true
+		}
+		log.Debug("Failed to get expanded collection for %s, falling back to legacy method", uri)
+	}
+
+	// Fallback to legacy method
+	return client.redfish.Get(uri, legacyGroup)
+}
+
 func (client *Client) RefreshSensorsNew(mc *Collector, ch chan<- prometheus.Metric) bool {
 	thermal := ThermalSubsystem{}
 	ok := client.redfish.Get(client.path.ThermalSubsystem, &thermal)
@@ -211,19 +240,28 @@ func (client *Client) RefreshSensorsNew(mc *Collector, ch chan<- prometheus.Metr
 	}
 
 	if thermal.Fans.OdataId != "" {
+		fansCollection := ThermalFanCollection{}
 		group := GroupResponse{}
-		ok := client.redfish.Get(thermal.Fans.OdataId, &group)
+		ok := client.getExpandedCollection(thermal.Fans.OdataId, &fansCollection, &group, "", 1)
 		if !ok {
 			return false
 		}
 
-		for _, c := range group.Members.GetLinks() {
-			fan := ThermalFan{}
-			ok = client.redfish.Get(c, &fan)
-			if !ok {
-				return false
+		var fans []ThermalFan
+		if config.Config.Collect.ExpandCollections && len(fansCollection.Members) > 0 {
+			fans = fansCollection.Members
+		} else {
+			for _, c := range group.Members.GetLinks() {
+				fan := ThermalFan{}
+				ok = client.redfish.Get(c, &fan)
+				if !ok {
+					return false
+				}
+				fans = append(fans, fan)
 			}
+		}
 
+		for _, fan := range fans {
 			units := "percent"
 			value := 0.0
 
@@ -349,19 +387,56 @@ func (client *Client) RefreshSystem(mc *Collector, ch chan<- prometheus.Metric) 
 }
 
 func (client *Client) RefreshProcessors(mc *Collector, ch chan<- prometheus.Metric) bool {
+	var processors []Processor
 	group := GroupResponse{}
-	ok := client.redfish.Get(client.path.Processors, &group)
-	if !ok {
-		return false
-	}
 
-	for _, c := range group.Members.GetLinks() {
-		resp := Processor{}
-		ok = client.redfish.Get(c, &resp)
+	if client.vendor == H3C {
+		h3cProcessorsCollection := H3CProcessorCollection{}
+		ok := client.getExpandedCollection(client.path.Processors, &h3cProcessorsCollection, &group, "", 1)
 		if !ok {
 			return false
 		}
 
+		if config.Config.Collect.ExpandCollections && len(h3cProcessorsCollection.Members) > 0 {
+			for _, h3cp := range h3cProcessorsCollection.Members {
+				p := h3cp.Processor
+				p.Socket = strconv.Itoa(h3cp.Socket)
+				processors = append(processors, p)
+			}
+		} else {
+			for _, c := range group.Members.GetLinks() {
+				h3cResp := H3CProcessor{}
+				ok = client.redfish.Get(c, &h3cResp)
+				if !ok {
+					return false
+				}
+				resp := h3cResp.Processor
+				resp.Socket = strconv.Itoa(h3cResp.Socket)
+				processors = append(processors, resp)
+			}
+		}
+	} else {
+		processorsCollection := ProcessorCollection{}
+		ok := client.getExpandedCollection(client.path.Processors, &processorsCollection, &group, "", 1)
+		if !ok {
+			return false
+		}
+
+		if config.Config.Collect.ExpandCollections && len(processorsCollection.Members) > 0 {
+			processors = processorsCollection.Members
+		} else {
+			for _, c := range group.Members.GetLinks() {
+				processorResp := Processor{}
+				ok = client.redfish.Get(c, &processorResp)
+				if !ok {
+					return false
+				}
+				processors = append(processors, processorResp)
+			}
+		}
+	}
+
+	for _, resp := range processors {
 		if resp.ProcessorType != "CPU" {
 			continue
 		}
@@ -383,43 +458,61 @@ func (client *Client) RefreshProcessors(mc *Collector, ch chan<- prometheus.Metr
 }
 
 func (client *Client) RefreshNetwork(mc *Collector, ch chan<- prometheus.Metric) bool {
+	networkAdaptersCollection := NetworkAdapterCollection{}
 	group := GroupResponse{}
-	ok := client.redfish.Get(client.path.Network, &group)
+	selector := "Members/Id,Members/Manufacturer,Members/Model,Members/SerialNumber,Members/Status,Members/NetworkPorts"
+	ok := client.getExpandedCollection(client.path.Network, &networkAdaptersCollection, &group, selector, 3)
 	if !ok {
 		return false
 	}
 
-	for _, c := range group.Members.GetLinks() {
-		ni := NetworkAdapter{}
-		ok = client.redfish.Get(c, &ni)
-		if !ok {
-			return false
-		}
-
-		mc.NewNetworkAdapterInfo(ch, &ni)
-		mc.NewNetworkAdapterHealth(ch, &ni)
-
-		ports := GroupResponse{}
-		ok = client.redfish.Get(ni.GetPorts(), &ports)
-		if !ok {
-			return false
-		}
-
-		for _, c := range ports.Members.GetLinks() {
-			port := NetworkPort{}
-			ok = client.redfish.Get(c, &port)
+	var networkAdapters []NetworkAdapter
+	if config.Config.Collect.ExpandCollections && len(networkAdaptersCollection.Members) > 0 {
+		networkAdapters = networkAdaptersCollection.Members
+	} else {
+		for _, c := range group.Members.GetLinks() {
+			ni := NetworkAdapter{}
+			ok = client.redfish.Get(c, &ni)
 			if !ok {
 				return false
 			}
+			networkAdapters = append(networkAdapters, ni)
+		}
+	}
 
-			// Issue #92
-			if client.vendor == DELL {
-				if ni.Id == port.Id {
-					s := strings.Split(c, "/")
-					port.Id = s[len(s)-1]
-				}
+	for _, ni := range networkAdapters {
+		mc.NewNetworkAdapterInfo(ch, &ni)
+		mc.NewNetworkAdapterHealth(ch, &ni)
+
+		portsCollection := ni.GetPortsCollection()
+
+		var networkPorts []NetworkPort
+		if config.Config.Collect.ExpandCollections && len(portsCollection.Members) > 0 {
+			networkPorts = portsCollection.Members
+		} else {
+			portsGroup := GroupResponse{}
+			ok = client.getExpandedCollection(ni.GetPorts(), &portsCollection, &portsGroup, "", 1)
+			if !ok {
+				return false
 			}
+			for _, c := range portsGroup.Members.GetLinks() {
+				port := NetworkPort{}
+				ok = client.redfish.Get(c, &port)
+				if !ok {
+					return false
+				}
+				// Issue #92
+				if client.vendor == DELL {
+					if ni.Id == port.Id {
+						s := strings.Split(c, "/")
+						port.Id = s[len(s)-1]
+					}
+				}
+				networkPorts = append(networkPorts, port)
+			}
+		}
 
+		for _, port := range networkPorts {
 			mc.NewNetworkPortHealth(ch, ni.Id, &port)
 			mc.NewNetworkPortCurrentSpeed(ch, ni.Id, &port)
 			mc.NewNetworkPortMaxSpeed(ch, ni.Id, &port)
@@ -443,19 +536,28 @@ func (client *Client) RefreshPowerNew(mc *Collector, ch chan<- prometheus.Metric
 		return true
 	}
 
+	powerSuppliesCollection := PowerSupplyCollection{}
 	group := GroupResponse{}
-	ok = client.redfish.Get(power.PowerSupplies.OdataId, &group)
+	ok = client.getExpandedCollection(power.PowerSupplies.OdataId, &powerSuppliesCollection, &group, "", 1)
 	if !ok {
 		return false
 	}
 
-	for _, c := range group.Members.GetLinks() {
-		psu := PowerSupply{}
-		ok = client.redfish.Get(c, &psu)
-		if !ok {
-			return false
+	var powerSupplies []PowerSupply
+	if config.Config.Collect.ExpandCollections && len(powerSuppliesCollection.Members) > 0 {
+		powerSupplies = powerSuppliesCollection.Members
+	} else {
+		for _, c := range group.Members.GetLinks() {
+			psu := PowerSupply{}
+			ok = client.redfish.Get(c, &psu)
+			if !ok {
+				return false
+			}
+			powerSupplies = append(powerSupplies, psu)
 		}
+	}
 
+	for _, psu := range powerSupplies {
 		mc.NewPowerSupplyHealth(ch, psu.Status.Health, psu.Id)
 		mc.NewPowerSupplyCapacityWatts(ch, psu.PowerCapacityWatts, psu.Id)
 
@@ -627,23 +729,33 @@ func (client *Client) RefreshEventLog(mc *Collector, ch chan<- prometheus.Metric
 }
 
 func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric) bool {
+	storageCollection := StorageCollection{}
 	group := GroupResponse{}
-	ok := client.redfish.Get(client.path.Storage, &group)
+	ok := client.getExpandedCollection(client.path.Storage, &storageCollection, &group, "", 1)
 	if !ok {
 		return false
 	}
 
-	for _, c := range group.Members.GetLinks() {
-		storage := Storage{}
-		ok = client.redfish.Get(c, &storage)
-		if !ok {
-			return false
+	var storages []Storage
+	if config.Config.Collect.ExpandCollections && len(storageCollection.Members) > 0 {
+		storages = storageCollection.Members
+	} else {
+		for _, c := range group.Members.GetLinks() {
+			storage := Storage{}
+			ok = client.redfish.Get(c, &storage)
+			if !ok {
+				return false
+			}
+			storages = append(storages, storage)
 		}
+	}
 
+	for _, storage := range storages {
 		// iLO 4
 		if (client.vendor == HPE) && (client.version == 4) {
 			grp := GroupResponse{}
-			ok = client.redfish.Get(c+"DiskDrives/", &grp)
+			// Use storage.Odata.OdataId as the base path for DiskDrives
+			ok = client.redfish.Get(storage.Odata.OdataId+"DiskDrives/", &grp)
 			if !ok {
 				return false
 			}
@@ -655,13 +767,34 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 		mc.NewDellControllerBatteryHealth(ch, &storage)
 
 		// Drives
-		for _, c := range storage.Drives.GetLinks() {
-			drive := StorageDrive{}
-			ok = client.redfish.Get(c, &drive)
-			if !ok {
-				return false
+		var drives []StorageDrive
+		if config.Config.Collect.ExpandCollections {
+			// If expanded, and Storage.Drives is an OdataSlice, we still need to fetch each drive individually
+			// but we can try to expand each individual drive.
+			for _, c := range storage.Drives.GetLinks() {
+				drive := StorageDrive{}
+				ok = client.redfish.Get(c+"?$expand=*", &drive) // Expand individual drive
+				if !ok {
+					log.Debug("Failed to get expanded drive for %s, falling back to non-expanded", c)
+					ok = client.redfish.Get(c, &drive)
+					if !ok {
+						return false
+					}
+				}
+				drives = append(drives, drive)
 			}
+		} else {
+			for _, c := range storage.Drives.GetLinks() {
+				drive := StorageDrive{}
+				ok = client.redfish.Get(c, &drive)
+				if !ok {
+					return false
+				}
+				drives = append(drives, drive)
+			}
+		}
 
+		for _, drive := range drives {
 			if drive.Status.State == StateAbsent {
 				continue
 			}
@@ -686,20 +819,29 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 		}
 
 		// Controllers
-		if c := storage.Controllers.OdataId; len(c) > 0 {
-			grp := GroupResponse{}
-			ok = client.redfish.Get(c, &grp)
+		if ctlrOdataId := storage.Controllers.OdataId; len(ctlrOdataId) > 0 {
+			controllersCollection := StorageControllerCollection{}
+			controllersGroup := GroupResponse{}
+			ok = client.getExpandedCollection(ctlrOdataId, &controllersCollection, &controllersGroup, "", 1)
 			if !ok {
 				return false
 			}
 
-			for _, c := range grp.Members.GetLinks() {
-				ctlr := StorageController{}
-				ok = client.redfish.Get(c, &ctlr)
-				if !ok {
-					return false
+			var controllers []StorageController
+			if config.Config.Collect.ExpandCollections && len(controllersCollection.Members) > 0 {
+				controllers = controllersCollection.Members
+			} else {
+				for _, c := range controllersGroup.Members.GetLinks() {
+					ctlr := StorageController{}
+					ok = client.redfish.Get(c, &ctlr)
+					if !ok {
+						return false
+					}
+					controllers = append(controllers, ctlr)
 				}
+			}
 
+			for _, ctlr := range controllers {
 				mc.NewStorageControllerInfo(ch, storage.Id, &ctlr)
 				mc.NewStorageControllerSpeed(ch, storage.Id, &ctlr)
 				mc.NewStorageControllerHealth(ch, storage.Id, &ctlr)
@@ -707,20 +849,29 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 		}
 
 		// Volumes
-		if c := storage.Volumes.OdataId; len(c) > 0 {
-			grp := GroupResponse{}
-			ok = client.redfish.Get(c, &grp)
+		if volOdataId := storage.Volumes.OdataId; len(volOdataId) > 0 {
+			volumesCollection := StorageVolumeCollection{}
+			volumesGroup := GroupResponse{}
+			ok = client.getExpandedCollection(volOdataId, &volumesCollection, &volumesGroup, "", 1)
 			if !ok {
 				return false
 			}
 
-			for _, c := range grp.Members.GetLinks() {
-				vol := StorageVolume{}
-				ok = client.redfish.Get(c, &vol)
-				if !ok {
-					return false
+			var volumes []StorageVolume
+			if config.Config.Collect.ExpandCollections && len(volumesCollection.Members) > 0 {
+				volumes = volumesCollection.Members
+			} else {
+				for _, c := range volumesGroup.Members.GetLinks() {
+					vol := StorageVolume{}
+					ok = client.redfish.Get(c, &vol)
+					if !ok {
+						return false
+					}
+					volumes = append(volumes, vol)
 				}
+			}
 
+			for _, vol := range volumes {
 				mc.NewStorageVolumeInfo(ch, storage.Id, &vol)
 				mc.NewStorageVolumeHealth(ch, storage.Id, &vol)
 				mc.NewStorageVolumeCapacity(ch, storage.Id, &vol)
@@ -734,19 +885,28 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 			return true
 		}
 
+		h3cDrivesCollection := StorageDriveCollection{}
 		drvgrp := GroupResponse{}
-		ok = client.redfish.Get(client.path.H3CDrives, &drvgrp)
+		ok = client.getExpandedCollection(client.path.H3CDrives, &h3cDrivesCollection, &drvgrp, "", 1)
 		if !ok {
 			return false
 		}
 
-		for _, c := range drvgrp.Members.GetLinks() {
-			drive := StorageDrive{}
-			ok = client.redfish.Get(c, &drive)
-			if !ok {
-				return false
+		var h3cDrives []StorageDrive
+		if config.Config.Collect.ExpandCollections && len(h3cDrivesCollection.Members) > 0 {
+			h3cDrives = h3cDrivesCollection.Members
+		} else {
+			for _, c := range drvgrp.Members.GetLinks() {
+				drive := StorageDrive{}
+				ok = client.redfish.Get(c, &drive)
+				if !ok {
+					return false
+				}
+				h3cDrives = append(h3cDrives, drive)
 			}
+		}
 
+		for _, drive := range h3cDrives {
 			if drive.Status.State == StateAbsent {
 				continue
 			}
@@ -763,19 +923,28 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 }
 
 func (client *Client) RefreshMemory(mc *Collector, ch chan<- prometheus.Metric) bool {
+	memoryCollection := MemoryCollection{}
 	group := GroupResponse{}
-	ok := client.redfish.Get(client.path.Memory, &group)
+	ok := client.getExpandedCollection(client.path.Memory, &memoryCollection, &group, "", 1)
 	if !ok {
 		return false
 	}
 
-	for _, c := range group.Members.GetLinks() {
-		m := Memory{}
-		ok = client.redfish.Get(c, &m)
-		if !ok {
-			return false
+	var memories []Memory
+	if config.Config.Collect.ExpandCollections && len(memoryCollection.Members) > 0 {
+		memories = memoryCollection.Members
+	} else {
+		for _, c := range group.Members.GetLinks() {
+			m := Memory{}
+			ok = client.redfish.Get(c, &m)
+			if !ok {
+				return false
+			}
+			memories = append(memories, m)
 		}
+	}
 
+	for _, m := range memories {
 		if (m.Status.State == StateAbsent) || (m.Id == "") {
 			continue
 		}

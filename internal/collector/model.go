@@ -92,6 +92,7 @@ type GroupResponse struct {
 }
 
 type Processor struct {
+	Odata
 	Id                    string  `json:"Id"`
 	Name                  string  `json:"Name"`
 	Description           string  `json:"Description"`
@@ -134,6 +135,11 @@ type Processor struct {
 			} `json:"DellProcessor"`
 		} `json:"Dell"`
 	} `json:"Oem"`
+}
+
+type H3CProcessor struct {
+	Processor
+	Socket int `json:"Socket"`
 }
 
 type ChassisResponse struct {
@@ -276,6 +282,7 @@ type ThermalSubsystem struct {
 }
 
 type ThermalFan struct {
+	Odata
 	Id              string `json:"Id"`
 	Name            string `json:"Name"`
 	Description     string `json:"Description"`
@@ -307,6 +314,7 @@ type ThermalMetrics struct {
 }
 
 type Storage struct {
+	Odata
 	Id                 string     `json:"Id"`
 	Name               string     `json:"Name"`
 	Description        string     `json:"Description"`
@@ -336,6 +344,7 @@ type Storage struct {
 }
 
 type StorageController struct {
+	Odata
 	Id              string  `json:"Id"`
 	Name            string  `json:"Name"`
 	Description     string  `json:"Description"`
@@ -362,6 +371,7 @@ type StorageController struct {
 }
 
 type StorageDrive struct {
+	Odata
 	Id                      string  `json:"Id"`
 	Name                    string  `json:"Name"`
 	Description             string  `json:"Description"`
@@ -392,6 +402,7 @@ type StorageDrive struct {
 }
 
 type StorageVolume struct {
+	Odata
 	Id                 string   `json:"Id"`
 	Name               string   `json:"Name"`
 	Description        string   `json:"Description"`
@@ -415,6 +426,7 @@ type StorageVolume struct {
 }
 
 type Memory struct {
+	Odata
 	Id                string `json:"Id"`
 	Name              string `json:"Name"`
 	Description       string `json:"Description"`
@@ -459,25 +471,26 @@ type GPU struct {
 	Model              string `json:"Model"`
 	Name               string `json:"Name"`
 	PartNumber         string `json:"PartNumber"`
-	PowerConsumedWatts int32  `json:"PowerConsumedWatts"`
+	PowerConsumedWatts uint32 `json:"PowerConsumedWatts"`
 	SerialNumber       string `json:"SerialNumber"`
 	SlotNum            int    `json:"SlotNum"`
 	Status             Status `json:"Status"`
-	TemperatureCelsius int32  `json:"TemperatureCelsius"`
+	TemperatureCelsius uint32 `json:"TemperatureCelsius"`
 }
 
 type NetworkAdapter struct {
-	Id           string `json:"Id"`
-	Name         string `json:"Name"`
-	Description  string `json:"Description"`
-	Manufacturer string `json:"Manufacturer"`
-	Model        string `json:"Model"`
-	PartNumber   string `json:"PartNumber"`
-	SerialNumber string `json:"SerialNumber"`
-	SKU          string `json:"SKU"`
-	Status       Status `json:"Status"`
-	NetworkPorts Odata  `json:"NetworkPorts"` // deprecated
-	Ports        Odata  `json:"Ports"`
+	Odata
+	Id           string                `json:"Id"`
+	Name         string                `json:"Name"`
+	Description  string                `json:"Description"`
+	Manufacturer string                `json:"Manufacturer"`
+	Model        string                `json:"Model"`
+	PartNumber   string                `json:"PartNumber"`
+	SerialNumber string                `json:"SerialNumber"`
+	SKU          string                `json:"SKU"`
+	Status       Status                `json:"Status"`
+	NetworkPorts NetworkPortCollection `json:"NetworkPorts"` // deprecated
+	Ports        NetworkPortCollection `json:"Ports"`
 	Controllers  []struct {
 		FirmwarePackageVersion string `json:"FirmwarePackageVersion"`
 	} `json:"Controllers"`
@@ -491,7 +504,16 @@ func (n *NetworkAdapter) GetPorts() string {
 	}
 }
 
+func (n *NetworkAdapter) GetPortsCollection() NetworkPortCollection {
+	if len(n.Ports.Members) > 0 {
+		return n.Ports
+	} else {
+		return n.NetworkPorts
+	}
+}
+
 type NetworkPort struct {
+	Odata
 	Id                        string  `json:"Id"`
 	Name                      string  `json:"Name"`
 	Description               string  `json:"Description"`

@@ -144,7 +144,14 @@ func (c *RootConfig) Validate() error {
 		c.Collect.Processors = true
 		c.Collect.GPU = true
 		c.Collect.Extra = true
+		// c.Collect.ExpandCollections = false // Default to false when "all" is true
 	}
+
+	// Set default for ExpandCollections if not explicitly set
+	// This ensures it's always initialized, even if Collect.All is false
+	// if !c.Collect.ExpandCollections {
+	// 	c.Collect.ExpandCollections = false
+	// }
 
 	return nil
 }
