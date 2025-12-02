@@ -1,6 +1,8 @@
 package collector
 
 import (
+	"encoding/json"
+	"fmt"
 	"strconv"
 )
 
@@ -380,7 +382,7 @@ type StorageDrive struct {
 	MediaType               string  `json:"MediaType"`
 	Manufacturer            string  `json:"Manufacturer"`
 	Model                   string  `json:"Model"`
-	CapacityBytes           int     `json:"CapacityBytes"`
+	CapacityBytes           SafeInt `json:"CapacityBytes"` // Although redfish spec requires int, some implementation may still use float64
 	BlockSizeBytes          int     `json:"BlockSizeBytes"`
 	CapableSpeedGbs         float64 `json:"CapableSpeedGbs"`
 	Status                  Status  `json:"Status"`
@@ -575,26 +577,75 @@ type SystemResponse struct {
 		Model                 string `json:"Model"`
 		Status                Status `json:"Status"`
 	} `json:"ProcessorSummary"`
-	Processors     Odata  `json:"Processors"`
-	SKU            string `json:"SKU"`
-	SecureBoot     Odata  `json:"SecureBoot"`
-	SerialNumber   string `json:"SerialNumber"`
-	SimpleStorage  Odata  `json:"SimpleStorage"`
-	Status         Status `json:"Status"`
-	Storage        Odata  `json:"Storage"`
-	SystemType     string `json:"SystemType"`
-	TrustedModules []struct {
-		FirmwareVersion string `json:"FirmwareVersion"`
-		InterfaceType   string `json:"InterfaceType"`
-		Status          Status `json:"Status"`
-	} `json:"TrustedModules"`
-	Oem struct {
+	Processors     Odata           `json:"Processors"`
+	SKU            string          `json:"SKU"`
+	SecureBoot     Odata           `json:"SecureBoot"`
+	SerialNumber   string          `json:"SerialNumber"`
+	SimpleStorage  Odata           `json:"SimpleStorage"`
+	Status         Status          `json:"Status"`
+	Storage        Odata           `json:"Storage"`
+	SystemType     string          `json:"SystemType"`
+	TrustedModules []TrustedModule `json:"TrustedModules"`
+	LogServices    Odata           `json:"LogServices"`
+	Oem            struct {
 		Hpe struct {
 			IndicatorLED string `json:"IndicatorLED"`
 		} `json:"Hpe"`
 		Public *struct {
 			GPU Odata `json:"GPU"`
 		} `json:"Public"`
+	} `json:"Oem"`
+}
+
+type TrustedModule struct {
+	FirmwareVersion        string `json:"FirmwareVersion"`
+	FirmwareVersion2       string `json:"FirmwareVersion2"`
+	InterfaceType          string `json:"InterfaceType"`
+	InterfaceTypeSelection string `json:"InterfaceTypeSelection"`
+	Status                 Status `json:"Status"`
+}
+
+func (m *SystemResponse) UnmarshalJSON(data []byte) error {
+	type Alias SystemResponse
+	aux := &struct {
+		*Alias
+		TrustedModules json.RawMessage `json:"TrustedModules"`
+	}{
+		Alias: (*Alias)(m),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return fmt.Errorf("failed to unmarshal object into SystemResponse struct: %w", err)
+	}
+
+	if aux.TrustedModules == nil {
+		m.TrustedModules = []TrustedModule{}
+		return nil
+	}
+
+	var trustedModules []TrustedModule
+	if err := json.Unmarshal(aux.TrustedModules, &trustedModules); err == nil {
+		m.TrustedModules = trustedModules
+		return nil
+	}
+
+	var singleTrustedModule TrustedModule
+	if err := json.Unmarshal(aux.TrustedModules, &singleTrustedModule); err == nil {
+		m.TrustedModules = []TrustedModule{singleTrustedModule}
+		return nil
+	}
+
+	return fmt.Errorf("failed to unmarshal 'TrustedModules' field: expected TrustedModules or []TrustedModules, got %s", aux.TrustedModules)
+}
+
+type ManagerResponse struct {
+	DateTime            string `json:"DateTime"`
+	DateTimeLocalOffset string `json:"DateTimeLocalOffset"`
+	Oem                 struct {
+		OemManagement *struct {
+			GPU  Odata `json:"GPU"`
+			NVMe Odata `json:"NVMe"`
+		} `json:"OemManagement"`
 	} `json:"Oem"`
 }
 
@@ -791,7 +842,7 @@ type EventLogResponse struct {
 		Message      string  `json:"Message"`
 		MessageArgs  []any   `json:"MessageArgs"`
 		MessageId    string  `json:"MessageId"`
-		SensorNumber int     `json:"SensorNumber"`
+		SensorNumber SafeInt `json:"SensorNumber"`
 		SensorType   xstring `json:"SensorType"`
 		Severity     string  `json:"Severity"`
 	} `json:"Members"`

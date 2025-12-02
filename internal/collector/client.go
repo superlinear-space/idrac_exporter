@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ const (
 	INVENTEC
 	FUJITSU
 	SUPERMICRO
+	WISTRON
 )
 
 func detectVendor(manufacturer string, fallback int) int {
@@ -41,6 +43,8 @@ func detectVendor(manufacturer string, fallback int) int {
 		return FUJITSU
 	} else if strings.Contains(m, "supermicro") {
 		return SUPERMICRO
+	} else if strings.Contains(m, "wistron") {
+		return WISTRON
 	}
 	return fallback
 }
@@ -55,6 +59,7 @@ type Client struct {
 		ThermalSubsystem string
 		Power            string
 		PowerSubsystem   string
+		PowerSubsystems  []string
 		Storage          string
 		Memory           string
 		Network          string
@@ -92,6 +97,7 @@ func (client *Client) findAllEndpoints() bool {
 	var group GroupResponse
 	var chassis ChassisResponse
 	var system SystemResponse
+	var manager ManagerResponse
 	var ok bool
 
 	// Root
@@ -133,9 +139,6 @@ func (client *Client) findAllEndpoints() bool {
 	client.path.Power = chassis.Power.OdataId
 	client.path.PowerSubsystem = chassis.PowerSubsystem.OdataId
 	client.path.Processors = system.Processors.OdataId
-	if system.Oem.Public != nil {
-		client.path.GPU = system.Oem.Public.GPU.OdataId
-	}
 
 	client.vendor = detectVendor(system.Manufacturer, client.vendor)
 
@@ -170,6 +173,8 @@ func (client *Client) findAllEndpoints() bool {
 			client.path.Event = "/redfish/v1/Systems/1/LogServices/Log1/Entries"
 		case H3C:
 			client.path.Event = "/redfish/v1/Systems/1/LogServices/Oem/Public/UnresolvedSEL/Entries"
+		case WISTRON:
+			client.path.Event = system.LogServices.OdataId + "/EventLog/Entries"
 		}
 	}
 
@@ -199,6 +204,43 @@ func (client *Client) findAllEndpoints() bool {
 
 	if client.vendor == H3C {
 		client.path.H3CDrives = chassis.Drives.OdataId
+
+		if system.Oem.Public != nil {
+			client.path.GPU = system.Oem.Public.GPU.OdataId
+		}
+	}
+
+	if client.vendor == WISTRON {
+		// Handle PowerSubsystem
+		var ps_chassis ChassisResponse
+		for _, e := range group.Members.GetLinks() {
+			p := strings.Split(e, "/")
+			if slices.Contains(p, "PDB") || slices.Contains(p, "MB") {
+				ok = client.redfish.Get(e, &ps_chassis)
+				if !ok {
+					continue
+				}
+				if ps_chassis.PowerSubsystem.OdataId != "" {
+					client.path.PowerSubsystems = append(client.path.PowerSubsystems, ps_chassis.PowerSubsystem.OdataId)
+				}
+			}
+		}
+
+		// Handle GPU
+		ok = client.redfish.Get(root.Managers.OdataId, &group)
+
+		if !ok {
+			return true
+		}
+
+		ok = client.redfish.Get(group.Members[0].OdataId, &manager)
+		if !ok {
+			return true
+		}
+
+		if manager.Oem.OemManagement != nil {
+			client.path.GPU = manager.Oem.OemManagement.GPU.OdataId
+		}
 	}
 
 	return true
@@ -523,9 +565,9 @@ func (client *Client) RefreshNetwork(mc *Collector, ch chan<- prometheus.Metric)
 	return true
 }
 
-func (client *Client) RefreshPowerNew(mc *Collector, ch chan<- prometheus.Metric) bool {
+func (client *Client) RefreshPowerNew(mc *Collector, ch chan<- prometheus.Metric, path string) bool {
 	power := PowerSubsystem{}
-	ok := client.redfish.Get(client.path.PowerSubsystem, &power)
+	ok := client.redfish.Get(path, &power)
 	if !ok {
 		return false
 	}
@@ -679,7 +721,12 @@ func (client *Client) RefreshPower(mc *Collector, ch chan<- prometheus.Metric) b
 		return client.RefreshPowerOld(mc, ch)
 	}
 	if client.path.PowerSubsystem != "" {
-		return client.RefreshPowerNew(mc, ch)
+		return client.RefreshPowerNew(mc, ch, client.path.PowerSubsystem)
+	}
+	if len(client.path.PowerSubsystems) > 0 {
+		for _, path := range client.path.PowerSubsystems {
+			client.RefreshPowerNew(mc, ch, path)
+		}
 	}
 	return true
 }
@@ -801,7 +848,7 @@ func (client *Client) RefreshStorage(mc *Collector, ch chan<- prometheus.Metric)
 
 			// iLO 4
 			if (client.vendor == HPE) && (client.version == 4) {
-				drive.CapacityBytes = 1024 * 1024 * drive.CapacityMiB
+				drive.CapacityBytes = SafeInt(1024 * 1024 * drive.CapacityMiB)
 				drive.Protocol = drive.InterfaceType
 				drive.PredictedLifeLeft = 100.0 - drive.SSDEnduranceUtilizationPercentage
 			}
@@ -973,18 +1020,33 @@ func (client *Client) RefreshGPU(mc *Collector, ch chan<- prometheus.Metric) boo
 		return true
 	}
 
-	resp := GPUResponse{}
-	ok := client.redfish.Get(client.path.GPU, &resp)
-	if !ok {
-		return false
-	}
+	if client.vendor == WISTRON {
+		group := GroupResponse{}
+		ok := client.redfish.Get(client.path.GPU, &group)
+		if !ok {
+			return false
+		}
 
-	// For each GPU
-	for _, g := range resp.GPU {
-		mc.NewGpuInfo(ch, &g)
-		mc.NewGpuHealth(ch, &g)
-		mc.NewGpuPowerConsumedWatts(ch, &g)
-		mc.NewGpuTemp(ch, &g)
+		// For each GPU management entry
+		for _, e := range group.Members.GetLinks() {
+			if strings.Contains(e, "Sensor") {
+				// TODO: Handle data collection per sensor
+			}
+		}
+	} else {
+		resp := GPUResponse{}
+		ok := client.redfish.Get(client.path.GPU, &resp)
+		if !ok {
+			return false
+		}
+
+		// For each GPU
+		for _, g := range resp.GPU {
+			mc.NewGpuInfo(ch, &g)
+			mc.NewGpuHealth(ch, &g)
+			mc.NewGpuPowerConsumedWatts(ch, &g)
+			mc.NewGpuTemp(ch, &g)
+		}
 	}
 
 	return true
