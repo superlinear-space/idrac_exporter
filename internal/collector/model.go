@@ -516,17 +516,18 @@ func (n *NetworkAdapter) GetPortsCollection() NetworkPortCollection {
 
 type NetworkPort struct {
 	Odata
-	Id                        string  `json:"Id"`
-	Name                      string  `json:"Name"`
-	Description               string  `json:"Description"`
-	LinkStatus                string  `json:"LinkStatus"`
-	CurrentLinkSpeedMbps      float64 `json:"CurrentLinkSpeedMbps"`
-	CurrentSpeedGbps          float64 `json:"CurrentSpeedGbps"`
-	MaxSpeedGbps              float64 `json:"MaxSpeedGbps"`
-	MaxFrameSize              int     `json:"MaxFrameSize"`
-	Status                    Status  `json:"Status"`
-	LinkNetworkTechnology     string  `json:"LinkNetworkTechnology"`
-	SupportedLinkCapabilities []struct {
+	Id                         string   `json:"Id"`
+	Name                       string   `json:"Name"`
+	Description                string   `json:"Description"`
+	LinkStatus                 string   `json:"LinkStatus"`
+	CurrentLinkSpeedMbps       float64  `json:"CurrentLinkSpeedMbps"`
+	CurrentSpeedGbps           float64  `json:"CurrentSpeedGbps"`
+	MaxSpeedGbps               float64  `json:"MaxSpeedGbps"`
+	MaxFrameSize               int      `json:"MaxFrameSize"`
+	Status                     Status   `json:"Status"`
+	LinkNetworkTechnology      string   `json:"LinkNetworkTechnology"`
+	AssociatedNetworkAddresses []string `json:"AssociatedNetworkAddresses"`
+	SupportedLinkCapabilities  []struct {
 		LinkNetworkTechnology string  `json:"LinkNetworkTechnology"`
 		LinkSpeedMbps         float64 `json:"LinkSpeedMbps"`
 	} `json:"SupportedLinkCapabilities"`

@@ -640,6 +640,10 @@ func (mc *Collector) NewNetworkPortMaxSpeed(ch chan<- prometheus.Metric, parent 
 
 func (mc *Collector) NewNetworkPortLinkUp(ch chan<- prometheus.Metric, parent string, m *NetworkPort) {
 	value := linkstatus2value(m.LinkStatus)
+	var networkAddress string
+	if len(m.AssociatedNetworkAddresses) > 0 {
+		networkAddress = m.AssociatedNetworkAddresses[0]
+	}
 	ch <- prometheus.MustNewConstMetric(
 		mc.NetworkPortLinkUp,
 		prometheus.GaugeValue,
@@ -647,6 +651,7 @@ func (mc *Collector) NewNetworkPortLinkUp(ch chan<- prometheus.Metric, parent st
 		m.Id,
 		parent,
 		m.LinkStatus,
+		networkAddress,
 	)
 }
 

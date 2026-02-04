@@ -370,7 +370,7 @@ func NewCollector() *Collector {
 		NetworkPortLinkUp: prometheus.NewDesc(
 			prometheus.BuildFQName(prefix, "network_port", "link_up"),
 			"Link status of network ports (up or down)",
-			[]string{"id", "adapter_id", "status"}, nil,
+			[]string{"id", "adapter_id", "status", "mac"}, nil,
 		),
 		CpuInfo: prometheus.NewDesc(
 			prometheus.BuildFQName(prefix, "cpu", "info"),
